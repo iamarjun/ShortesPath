@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/map"
+        android:icon="@drawable/ic_map"
+        android:title="@string/map"/>
+
+    <item
+        android:id="@+id/log"
+        android:icon="@drawable/ic_assignment"
+        android:title="@string/logs"/>
+</menu>
