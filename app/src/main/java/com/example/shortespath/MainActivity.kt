@@ -1,5 +1,6 @@
 package com.example.shortespath
 
+import android.Manifest
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
@@ -20,18 +21,25 @@ import com.example.shortespath.Constants.PERMISSIONS_REQUEST_ACCESS_FINE_LOCATIO
 import com.example.shortespath.Constants.PERMISSIONS_REQUEST_ENABLE_GPS
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.model.LatLng
 import kotlinx.android.synthetic.main.activity_main.*
 
 
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener {
 
     private var mLocationPermissionGranted = false
+    private lateinit var mFusedLocationProviderClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+
         bottom_navigation.setOnNavigationItemSelectedListener(this)
+
         viewpager.setOnPageChangeListener(object : ViewPager.OnPageChangeListener {
             override fun onPageScrollStateChanged(state: Int) {
             }
@@ -46,6 +54,20 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         })
 
         setupViewPager()
+    }
+
+    private fun getLastKnowLocation() {
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            return
+
+        mFusedLocationProviderClient.lastLocation.addOnCompleteListener {
+            if (it.isComplete) {
+                val location = it.result
+                val latLng = LatLng(location!!.latitude, location!!.longitude)
+            }
+        }
     }
 
     private fun setupViewPager() {
@@ -73,6 +95,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         if (checkMapServices())
             if (mLocationPermissionGranted)
                 // do something
+                getLastKnowLocation()
             else
                 getLocationPermission()
     }
