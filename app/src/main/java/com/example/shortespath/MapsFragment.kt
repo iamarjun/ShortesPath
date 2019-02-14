@@ -2,11 +2,16 @@ package com.example.shortespath
 
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.location.Location
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.support.v4.app.ActivityCompat
 import android.support.v4.app.Fragment
+import android.support.v4.content.ContextCompat
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -17,18 +22,17 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.LatLngBounds
-import com.google.android.gms.maps.model.Marker
-import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.*
 import com.google.maps.DirectionsApiRequest
 import com.google.maps.GeoApiContext
 import com.google.maps.PendingResult
+import com.google.maps.internal.PolylineEncoding
 import com.google.maps.model.DirectionsResult
 import kotlinx.android.synthetic.main.fragment_maps.view.*
 
 
-class MapsFragment : Fragment(), OnMapReadyCallback {
+class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClickListener,
+    GoogleMap.OnPolylineClickListener {
 
     private lateinit var mView: View
     private lateinit var mGoogleMap: GoogleMap
@@ -36,6 +40,7 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
     private lateinit var mFusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var location: Location
     private lateinit var mGeoApiContext: GeoApiContext
+    private lateinit var mPolyLinesData: ArrayList<PolyLineData>
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -46,6 +51,8 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
         mView = inflater.inflate(R.layout.fragment_maps, container, false)
 
         mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(activity!!)
+
+        mPolyLinesData = ArrayList()
 
         initMaps(savedInstanceState)
 
@@ -71,8 +78,8 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
         Log.d(TAG, "calculateDirections: calculating directions.")
 
         val destination = com.google.maps.model.LatLng(
-            marker.getPosition().latitude,
-            marker.getPosition().longitude
+            marker.position.latitude,
+            marker.position.longitude
         )
         val directions = DirectionsApiRequest(mGeoApiContext)
 
@@ -90,6 +97,9 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
                 Log.d(TAG, "calculateDirections: duration: " + result.routes[0].legs[0].duration)
                 Log.d(TAG, "calculateDirections: distance: " + result.routes[0].legs[0].distance)
                 Log.d(TAG, "calculateDirections: geocodedWayPoints: " + result.geocodedWaypoints[0].toString())
+
+                addPolylinesToMap(result)
+
             }
 
             override fun onFailure(e: Throwable) {
@@ -185,6 +195,10 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
 
         mGoogleMap = map
 
+        mGoogleMap.setOnInfoWindowClickListener(this)
+
+        mGoogleMap.setOnPolylineClickListener(this)
+
         map.addMarker(MarkerOptions().position(LatLng(0.0, 0.0)).title("Marker"))
 
         if (ActivityCompat.checkSelfPermission(
@@ -222,6 +236,79 @@ class MapsFragment : Fragment(), OnMapReadyCallback {
 
     companion object {
         val TAG = MainActivity::class.java.canonicalName
+    }
+
+    private fun addPolylinesToMap(result: DirectionsResult) {
+
+        Handler(Looper.getMainLooper()).post(object : Runnable {
+
+            override fun run() {
+
+                if (mPolyLinesData.size > 0) {
+                    for (polyLineData in mPolyLinesData)
+                        polyLineData.polyline.remove()
+
+                    mPolyLinesData.clear()
+                    mPolyLinesData = ArrayList()
+                }
+
+                Log.d(TAG, "run: result routes: " + result.routes.size)
+                for (route in result.routes) {
+                    Log.d(TAG, "run: leg: " + route.legs[0].toString())
+                    val decodedPath = PolylineEncoding.decode(route.overviewPolyline.getEncodedPath())
+                    val newDecodedPath = ArrayList<LatLng>()
+                    // This loops through all the LatLng coordinates of ONE polyline.
+                    for (latLng in decodedPath) {
+                        // Log.d(TAG, "run: latlng: " + latLng.toString());
+                        newDecodedPath.add(
+                            LatLng(
+                                latLng.lat,
+                                latLng.lng
+                            )
+                        )
+                    }
+                    val polyline = mGoogleMap.addPolyline(PolylineOptions().addAll(newDecodedPath))
+                    polyline.color = ContextCompat.getColor(activity!!, R.color.darkGrey)
+                    polyline.isClickable = true
+
+                    mPolyLinesData.add(PolyLineData(polyline, route.legs[0]))
+                }
+            }
+        })
+    }
+
+    override fun onInfoWindowClick(marker: Marker) {
+        if (marker.snippet == "This is you") {
+            marker.hideInfoWindow()
+        } else {
+
+            val builder = AlertDialog.Builder(activity)
+            builder.setMessage("Get Direction?")
+                .setCancelable(true)
+                .setPositiveButton("Yes") { dialog, _ ->
+                    dialog.dismiss()
+                    calculateDirections(marker)
+                }
+                .setNegativeButton("No") { dialog, _ -> dialog.cancel() }
+            val alert = builder.create()
+            alert.show()
+        }
+    }
+
+    override fun onPolylineClick(p0: Polyline?) {
+
+        for (polyLineData in mPolyLinesData) {
+
+            Log.d(TAG, "onPolylineClick: toString: $polyLineData")
+
+            if (p0!!.id == polyLineData.polyline.id) {
+                polyLineData.polyline.color = ContextCompat.getColor(activity!!, R.color.blue1);
+                polyLineData.polyline.zIndex = 1f
+            } else {
+                polyLineData.polyline.color = ContextCompat.getColor(activity!!, R.color.darkGrey);
+                polyLineData.polyline.zIndex = 0f
+            }
+        }
     }
 
 }

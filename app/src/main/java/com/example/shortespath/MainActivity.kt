@@ -2,7 +2,6 @@ package com.example.shortespath
 
 import android.Manifest
 import android.content.Context
-import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
@@ -58,8 +57,15 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
 
     private fun getLastKnowLocation() {
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-            ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        )
             return
 
         mFusedLocationProviderClient.lastLocation.addOnCompleteListener {
@@ -94,7 +100,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
 
         if (checkMapServices())
             if (mLocationPermissionGranted)
-                // do something
+            // do something
                 getLastKnowLocation()
             else
                 getLocationPermission()
@@ -113,10 +119,10 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         val builder = AlertDialog.Builder(this)
         builder.setMessage("This application requires GPS to work properly, do you want to enable it?")
             .setCancelable(false)
-            .setPositiveButton("Yes", DialogInterface.OnClickListener { dialog, id ->
+            .setPositiveButton("Yes") { _, _ ->
                 val enableGpsIntent = Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
                 startActivityForResult(enableGpsIntent, PERMISSIONS_REQUEST_ENABLE_GPS)
-            })
+            }
         val alert = builder.create()
         alert.show()
     }
