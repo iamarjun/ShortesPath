@@ -1,10 +1,8 @@
 package com.example.shortespath
 
-
 import android.Manifest
 import android.app.AlertDialog
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.location.Location
 import android.os.Bundle
 import android.os.Handler
@@ -16,6 +14,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import com.example.shortespath.Constants.MAPVIEW_BUNDLE_KEY
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -28,6 +27,8 @@ import com.google.maps.GeoApiContext
 import com.google.maps.PendingResult
 import com.google.maps.internal.PolylineEncoding
 import com.google.maps.model.DirectionsResult
+import com.google.maps.model.Distance
+import com.google.maps.model.Duration
 import kotlinx.android.synthetic.main.fragment_maps.view.*
 
 
@@ -41,6 +42,14 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
     private lateinit var location: Location
     private lateinit var mGeoApiContext: GeoApiContext
     private lateinit var mPolyLinesData: ArrayList<PolyLineData>
+    private lateinit var mLatLngs: ArrayList<com.google.maps.model.LatLng>
+    private lateinit var mLogs: ArrayList<Logs>
+    private lateinit var mDistance: Distance
+    private lateinit var mDuration: Duration
+
+    interface LogListener {
+        fun onGettingLog(log: Logs)
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -54,9 +63,63 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
 
         mPolyLinesData = ArrayList()
 
+        mLatLngs = ArrayList()
+
+        mLogs = ArrayList()
+
+        mView.distance.setOnClickListener {
+            if (mLatLngs.size > 1)
+                multiMarkerDistance(mLatLngs)
+            else
+                Toast.makeText(activity!!, "Drop Some Markers First", Toast.LENGTH_LONG).show()
+        }
+
+        mView.reset.setOnClickListener {
+            mGoogleMap.clear()
+            mLatLngs.clear()
+            mLatLngs.add(com.google.maps.model.LatLng(location.latitude, location.longitude))
+
+            Toast.makeText(activity!!, "Cleared !", Toast.LENGTH_SHORT).show()
+        }
+
         initMaps(savedInstanceState)
 
         return mView
+    }
+
+    private fun multiMarkerDistance(mLatLng: ArrayList<com.google.maps.model.LatLng>) {
+
+        val directions = DirectionsApiRequest(mGeoApiContext)
+        directions.alternatives(true)
+
+        for (i in mLatLng.indices) {
+
+            when (i) {
+
+                0 -> directions.origin(mLatLng[i])
+
+                mLatLng.size - 1 -> directions.destination(mLatLng[i]).setCallback(object :
+                    PendingResult.Callback<DirectionsResult> {
+                    override fun onFailure(e: Throwable?) {
+                    }
+
+                    override fun onResult(result: DirectionsResult?) {
+
+                        addPolylinesToMap(result!!)
+
+                        mDistance = result.routes[0].legs[0].distance
+                        mDuration = result.routes[0].legs[0].duration
+
+                        addCurrentLogToLogs(mLatLngs)
+
+                    }
+
+                })
+
+                else -> directions.waypoints(DirectionsApiRequest.Waypoint(mLatLng[i]))
+            }
+
+        }
     }
 
     private fun initMaps(savedInstanceState: Bundle?) {
@@ -90,6 +153,10 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
                 location.longitude
             )
         )
+
+        for (latLng in mLatLngs)
+            directions.waypoints(DirectionsApiRequest.Waypoint(latLng))
+
         Log.d(TAG, "calculateDirections: destination: $destination")
         directions.destination(destination).setCallback(object : PendingResult.Callback<DirectionsResult> {
             override fun onResult(result: DirectionsResult) {
@@ -120,8 +187,10 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
             // This will be displayed on taping the marker
             markerOptions.title("${it.latitude} : ${it.longitude}")
 
+            mLatLngs.add(com.google.maps.model.LatLng(it.latitude, it.longitude))
+
             // Clears the previously touched position
-            googleMap.clear()
+            //googleMap.clear()
 
             // Animating to the touched position
             googleMap.animateCamera(CameraUpdateFactory.newLatLng(it))
@@ -160,6 +229,8 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
         mFusedLocationProviderClient.lastLocation.addOnCompleteListener {
             if (it.isComplete) {
                 location = it.result!!
+
+                mLatLngs.add(com.google.maps.model.LatLng(location.latitude, location.longitude))
 
                 val mBottomBoundary = location.latitude - 0.01
                 val mLeftBoundary = location.longitude - 0.01
@@ -234,47 +305,62 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
         mView.map_view.onLowMemory()
     }
 
-    companion object {
-        val TAG = MainActivity::class.java.canonicalName
+    private fun addCurrentLogToLogs(mLatLngs: ArrayList<com.google.maps.model.LatLng>) {
+
+        var origin = com.google.maps.model.LatLng()
+        var destination = com.google.maps.model.LatLng()
+        val waypoints = ArrayList<com.google.maps.model.LatLng>()
+
+        for (i in mLatLngs.indices) {
+
+            when (i) {
+
+                0 -> origin = mLatLngs[i]
+
+                mLatLngs.size - 1 -> destination = mLatLngs[i]
+
+                else -> waypoints.add(mLatLngs[i])
+            }
+
+        }
+
+        mLogListener.onGettingLog(Logs(origin, destination, waypoints, mDuration, mDistance))
+
     }
 
     private fun addPolylinesToMap(result: DirectionsResult) {
 
-        Handler(Looper.getMainLooper()).post(object : Runnable {
+        Handler(Looper.getMainLooper()).post {
+            if (mPolyLinesData.size > 0) {
+                for (polyLineData in mPolyLinesData)
+                    polyLineData.polyline.remove()
 
-            override fun run() {
-
-                if (mPolyLinesData.size > 0) {
-                    for (polyLineData in mPolyLinesData)
-                        polyLineData.polyline.remove()
-
-                    mPolyLinesData.clear()
-                    mPolyLinesData = ArrayList()
-                }
-
-                Log.d(TAG, "run: result routes: " + result.routes.size)
-                for (route in result.routes) {
-                    Log.d(TAG, "run: leg: " + route.legs[0].toString())
-                    val decodedPath = PolylineEncoding.decode(route.overviewPolyline.getEncodedPath())
-                    val newDecodedPath = ArrayList<LatLng>()
-                    // This loops through all the LatLng coordinates of ONE polyline.
-                    for (latLng in decodedPath) {
-                        // Log.d(TAG, "run: latlng: " + latLng.toString());
-                        newDecodedPath.add(
-                            LatLng(
-                                latLng.lat,
-                                latLng.lng
-                            )
-                        )
-                    }
-                    val polyline = mGoogleMap.addPolyline(PolylineOptions().addAll(newDecodedPath))
-                    polyline.color = ContextCompat.getColor(activity!!, R.color.darkGrey)
-                    polyline.isClickable = true
-
-                    mPolyLinesData.add(PolyLineData(polyline, route.legs[0]))
-                }
+                mPolyLinesData.clear()
+                mPolyLinesData = ArrayList()
             }
-        })
+
+            Log.d(TAG, "run: result routes: " + result.routes.size)
+            for (route in result.routes) {
+                Log.d(TAG, "run: leg: " + route.legs[0].toString())
+                val decodedPath = PolylineEncoding.decode(route.overviewPolyline.getEncodedPath())
+                val newDecodedPath = ArrayList<LatLng>()
+                // This loops through all the LatLng coordinates of ONE polyline.
+                for (latLng in decodedPath) {
+                    // Log.d(TAG, "run: latlng: " + latLng.toString());
+                    newDecodedPath.add(
+                        LatLng(
+                            latLng.lat,
+                            latLng.lng
+                        )
+                    )
+                }
+                val polyline = mGoogleMap.addPolyline(PolylineOptions().addAll(newDecodedPath))
+                polyline.color = ContextCompat.getColor(activity!!, R.color.darkGrey)
+                polyline.isClickable = true
+
+                mPolyLinesData.add(PolyLineData(polyline, route.legs[0]))
+            }
+        }
     }
 
     override fun onInfoWindowClick(marker: Marker) {
@@ -299,6 +385,9 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
 
         for (polyLineData in mPolyLinesData) {
 
+            mView.info.text =
+                "Trip Duration: ${polyLineData.directionsLeg.duration} \t Trip Distance: ${polyLineData.directionsLeg.distance}"
+
             Log.d(TAG, "onPolylineClick: toString: $polyLineData")
 
             if (p0!!.id == polyLineData.polyline.id) {
@@ -308,6 +397,15 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
                 polyLineData.polyline.color = ContextCompat.getColor(activity!!, R.color.darkGrey);
                 polyLineData.polyline.zIndex = 0f
             }
+        }
+    }
+
+    companion object {
+        val TAG = MainActivity::class.java.canonicalName
+        lateinit var mLogListener: LogListener
+
+        fun setListener(mLogListener: LogListener) {
+            this.mLogListener = mLogListener
         }
     }
 
