@@ -227,7 +227,7 @@ class MapsFragment : Fragment(), OnMapReadyCallback, GoogleMap.OnInfoWindowClick
 
 
         mFusedLocationProviderClient.lastLocation.addOnCompleteListener {
-            if (it.isComplete) {
+            if (it.isComplete && it.result != null) {
                 location = it.result!!
 
                 mLatLngs.add(com.google.maps.model.LatLng(location.latitude, location.longitude))

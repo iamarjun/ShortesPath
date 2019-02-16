@@ -70,8 +70,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
 
         mFusedLocationProviderClient.lastLocation.addOnCompleteListener {
             if (it.isComplete) {
-                val location = it.result
-                val latLng = LatLng(location!!.latitude, location!!.longitude)
+                //val location = it.result
             }
         }
     }
